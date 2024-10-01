@@ -4,6 +4,7 @@ class CalculationTask implements Runnable {
 
     private final SeriesCalculator calculator;
 
+    //GIT
     public CalculationTask(SeriesCalculator calculator) {
         this.calculator = calculator;
     }
