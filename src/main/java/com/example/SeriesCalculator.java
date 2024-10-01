@@ -13,25 +13,20 @@ public class SeriesCalculator {
         double term;
         int n = 1;
 
-        int progressUpdateFrequency = 100;
-        int maxIterations = 100000;
-        double progress;
         do {
             term = term(n);
             sum += term;
-
-            if (n % (maxIterations / progressUpdateFrequency) == 0) {
-                progress = ((double) n / maxIterations) * 100;
-                System.out.printf("Прогресс: %.2f%% выполнено%n", progress);
-            }
-
             n++;
-        } while (Math.abs(term) > epsilon && n <= maxIterations);
-
-        System.out.println("Прогресс: 100% выполнено");
+        } while (Math.abs(term) > epsilon);
 
         return sum;
     }
+
+
+/*
+        System.out.println("Прогресс: 100% выполнено");
+*/
+
 
     private double term(int x) {
         return Math.sin(x) / x;

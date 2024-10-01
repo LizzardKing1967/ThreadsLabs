@@ -3,10 +3,11 @@ package com.example;
 class CalculationTask implements Runnable {
 
     private final SeriesCalculator calculator;
+    private final int taskId;
 
-    //GIT
-    public CalculationTask(SeriesCalculator calculator) {
+    public CalculationTask(SeriesCalculator calculator, int taskId) {
         this.calculator = calculator;
+        this.taskId = taskId;
     }
 
     @Override
@@ -16,9 +17,8 @@ class CalculationTask implements Runnable {
         double sum = calculator.calculateSum();
 
         long endTime = System.nanoTime();
-        long duration = (endTime - startTime) / 1_000_000;  // Время в миллисекундах
+        long duration = (endTime - startTime) / 1_000_000;
 
-        System.out.println("Сумма ряда: " + sum);
-        System.out.println("Время выполнения: " + duration + " мс");
+        System.out.println("Задача " + taskId + " завершена. Результат: " + sum + ", Время: " + duration + " мс");
     }
 }
