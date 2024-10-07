@@ -1,24 +1,44 @@
 package com.example;
 
-class CalculationTask implements Runnable {
+import java.util.concurrent.Callable;
+
+class CalculationTask implements Callable<Double> {
 
     private final SeriesCalculator calculator;
     private final int taskId;
+    private final int totalSteps;
+    private final int startStep;
+    private final ProgressStorage storage;
 
-    public CalculationTask(SeriesCalculator calculator, int taskId) {
+    public CalculationTask(SeriesCalculator calculator, int taskId, int totalSteps, int startStep, ProgressStorage storage) {
         this.calculator = calculator;
         this.taskId = taskId;
+        this.totalSteps = totalSteps;
+        this.startStep = startStep;
+        this.storage = storage;
     }
 
     @Override
-    public void run() {
-        long startTime = System.nanoTime();
+    public Double call() {
+        double sum = 0;
 
-        double sum = calculator.calculateSum();
+        try {
+            for (int i = 0; i < totalSteps; i++) {
+                int stepNumber = startStep + i;
+                sum += calculator.calculateStep(stepNumber);
 
-        long endTime = System.nanoTime();
-        long duration = (endTime - startTime) / 1_000_000;
+                if ((i + 1) % 100 == 0) {
+                    double progress = ((i + 1) * 100.0) / totalSteps;
+                    System.out.println("Задача " + taskId + ": результат = " + sum + ", прогресс = " + progress + "%");
+                    storage.updateTaskProgress(taskId, sum, progress);
+                }
+            }
 
-        System.out.println("Задача " + taskId + " завершена. Результат: " + sum + ", Время: " + duration + " мс");
+        } catch (Exception e) {
+            System.out.println("Ошибка в задаче " + taskId + ": " + e.getMessage());
+        }
+
+        System.out.println("Задача " + taskId + " завершена. Результат: " + sum);
+        return sum;
     }
 }
