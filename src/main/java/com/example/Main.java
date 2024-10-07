@@ -1,55 +1,49 @@
 package com.example;
-import java.util.*;
 
+import java.util.Scanner;
 
 public class Main {
 
     public static void main(String[] args) {
-        TaskManager taskManager = new TaskManager();
         Scanner scanner = new Scanner(System.in);
-        String input;
 
-        while (true) {
-            System.out.print("Введите команду: ");
-            input = scanner.nextLine().trim();
-            String[] tokens = input.split("\\s+");
-            String command = tokens[0];
+        System.out.println("Выберите хранилище: ");
+        System.out.println("1. Хранилище c ленивой инициализацией");
+        System.out.println("2. Хранилище без ленивой инициализации");
+        int choice = scanner.nextInt();
 
-            switch (command) {
-                case "start":
-                    if (tokens.length == 2) {
-                        try {
-                            double epsilon = Double.parseDouble(tokens[1]);
-                            taskManager.startTask(epsilon);
-                        } catch (NumberFormatException e) {
-                            System.out.println("Некорректный параметр погрешности.");
-                        }
-                    } else {
-                        System.out.println("Неверный формат команды.");
-                    }
-                    break;
+        ProgressStorage storage;
 
-                case "await":
-                    if (tokens.length == 2) {
-                        try {
-                            int taskId = Integer.parseInt(tokens[1]);
-                            taskManager.awaitTask(taskId);
-                        } catch (NumberFormatException e) {
-                            System.out.println("Некорректный номер задачи.");
-                        }
-                    } else {
-                        System.out.println("Неверный формат команды.");
-                    }
-                    break;
+        if (choice == 1) {
+            storage = LazyProgressStorage.getInstance();
+        } else {
+            storage = ImmediateProgressStorage.getInstance();
+        }
 
-                case "exit":
-                    taskManager.exitProgram();
-                    return;
+        ConsoleProgressObserver observer = new ConsoleProgressObserver();
+        storage.setObserver(observer);
 
-                default:
-                    System.out.println("Неизвестная команда.");
-                    break;
-            }
+        SeriesCalculator calculator = new SeriesCalculator();
+//        int totalsteps = 1000;
+
+        // Запуск первой задачи
+        CalculationTask task1 = new CalculationTask(calculator, 1, 5000, storage);
+        Thread thread1 = new Thread(task1);
+
+        // Запуск второй задачи
+        CalculationTask task2 = new CalculationTask(calculator, 2, 3000, storage);
+        Thread thread2 = new Thread(task2);
+
+        // Старт потоков
+        thread1.start();
+        thread2.start();
+
+        // Ожидание завершения
+        try {
+            thread1.join();
+            thread2.join();
+        } catch (InterruptedException e) {
+            System.out.println("Главный поток был прерван.");
         }
     }
 }
