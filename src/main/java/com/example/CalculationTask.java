@@ -1,8 +1,10 @@
 package com.example;
 
 import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Semaphore;
 
-class CalculationTask implements Callable<Double> {
+class CalculationTask implements Callable<TaskResultInformation> {
 
     private final SeriesCalculator calculator;
     private final int taskId;
@@ -10,19 +12,26 @@ class CalculationTask implements Callable<Double> {
     private final int startStep;
     private final ProgressStorage storage;
 
-    public CalculationTask(SeriesCalculator calculator, int taskId, int totalSteps, int startStep, ProgressStorage storage) {
+    private final CountDownLatch latch;
+
+    private final Semaphore semaphore;
+
+    public CalculationTask(SeriesCalculator calculator, int taskId, int totalSteps, int startStep, ProgressStorage storage, CountDownLatch latch, Semaphore semaphore) {
         this.calculator = calculator;
         this.taskId = taskId;
         this.totalSteps = totalSteps;
         this.startStep = startStep;
         this.storage = storage;
+        this.latch = latch;
+        this.semaphore = semaphore;
     }
 
     @Override
-    public Double call() {
+    public TaskResultInformation call() {
         double sum = 0;
 
         try {
+            semaphore.acquire();
             for (int i = 0; i < totalSteps; i++) {
                 int stepNumber = startStep + i;
                 sum += calculator.calculateStep(stepNumber);
@@ -36,9 +45,13 @@ class CalculationTask implements Callable<Double> {
 
         } catch (Exception e) {
             System.out.println("Ошибка в задаче " + taskId + ": " + e.getMessage());
+        } finally {
+            latch.countDown(); // Сообщаем, что задача завершена
+            semaphore.release();
         }
 
         System.out.println("Задача " + taskId + " завершена. Результат: " + sum);
-        return sum;
+        long completionTime = System.currentTimeMillis();
+        return new TaskResultInformation(sum, completionTime, taskId);
     }
 }

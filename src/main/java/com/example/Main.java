@@ -3,10 +3,7 @@ package com.example;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Scanner;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import java.util.concurrent.*;
 
 public class Main {
 
@@ -30,13 +27,14 @@ public class Main {
         storage.setObserver(observer);
 
         SeriesCalculator calculator = new SeriesCalculator();
-        int totalSteps = 10000000; // Общее количество шагов
-        int stepsPerTask = 1000000; // Количество шагов на одну задачу
+        int totalSteps = 100000000; // Общее количество шагов
+        int stepsPerTask = 10000000; // Количество шагов на одну задачу
 
         int numberOfTasks = (totalSteps + stepsPerTask - 1) / stepsPerTask;
-
+        Semaphore semaphore = new Semaphore(4);
+        CountDownLatch latch = new CountDownLatch(numberOfTasks);
         ExecutorService executorService = Executors.newFixedThreadPool(numberOfTasks);
-        List<Future<Double>> futures = new ArrayList<>();
+        List<Future<TaskResultInformation>> futures = new ArrayList<>();
         long startTime = System.currentTimeMillis();
 
         // Создаем и запускаем задачи динамически
@@ -44,33 +42,36 @@ public class Main {
             int taskId = i + 1;
             int startStep = i * stepsPerTask + 1;
             int taskSteps = Math.min(stepsPerTask, totalSteps - (i * stepsPerTask)); // Последняя задача может быть меньше
-            CalculationTask task = new CalculationTask(calculator, taskId, taskSteps, startStep, storage);
+            CalculationTask task = new CalculationTask(calculator, taskId, taskSteps, startStep, storage, latch, semaphore);
             futures.add(executorService.submit(task));
         }
 
-        double totalSumm = 0;
+        try {
+            latch.await();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        long overallCompletionTime = System.currentTimeMillis();
+        double timeDifference = 0;
 
-        for (Future<Double> future : futures) {
+        for (Future<TaskResultInformation> future : futures) {
             try {
-                totalSumm += future.get();  // Ожидаем завершения задачи и получаем результат
+                timeDifference = overallCompletionTime - future.get().getCompletionTime();
+                System.out.println("Задача c id: " + future.get().getTaskId() + " Выполнена раньше завершения всех задач на: " + timeDifference + " мс.");
             } catch (InterruptedException e) {
-                // Обрабатываем прерывание ожидания
                 System.out.println("Ожидание задачи было прервано: " + e.getMessage());
-
                 Thread.currentThread().interrupt();  // Восстанавливаем флаг прерывания
             } catch (ExecutionException e) {
-                // Обрабатываем исключение внутри задачи
                 System.out.println("Ошибка в выполнении задачи: " + e.getCause());  // Получаем исходное исключение
             } catch (Exception e) {
-                // Обрабатываем любые другие исключения
                 System.out.println("Неизвестная ошибка: " + e.getMessage());
             }
         }
 
         executorService.shutdown();
-        //double totalResult = storage.getTotalResult();
+        double totalResult = storage.getTotalResult();
         long endTime = System.currentTimeMillis();
-        System.out.println("Результат вычисления: " + totalSumm);
+        System.out.println("Результат вычисления: " + totalResult);
         System.out.println("Общее время выполнения: " + (endTime - startTime) + " мс.");
         System.out.println("Все задачи завершены.");
     }
