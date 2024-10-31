@@ -11,7 +11,7 @@ public class LazyProgressStorage implements ProgressStorage {
     private final Map<Integer, Pair<Double, Double>> taskProgressMap = new HashMap<>();
     private final List<ProgressObserver> observers = new ArrayList<>();
 
-    private final ReentrantLock taskProgressLock = new ReentrantLock();
+    private final CustomReentrantLock taskProgressLock = new CustomReentrantLock();
     private LazyProgressStorage() {
         System.out.println("Ленивое хранилище создано.");
     }
@@ -28,7 +28,7 @@ public class LazyProgressStorage implements ProgressStorage {
     }
 
     @Override
-    public void updateTaskProgress(int taskId, double result, double progress) {
+    public void updateTaskProgress(int taskId, double result, double progress) throws InterruptedException {
         taskProgressLock.lock();
         try {
             taskProgressMap.put(taskId, new Pair<>(result, progress));
@@ -40,7 +40,7 @@ public class LazyProgressStorage implements ProgressStorage {
 
     // Метод для получения среднего прогресса по всем задачам
     @Override
-    public double getAverageProgress() {
+    public double getAverageProgress() throws InterruptedException {
         taskProgressLock.lock();
         try {
             double totalProgress = 0.0; // Инициализируем переменную для хранения общей суммы прогресса
@@ -79,7 +79,7 @@ public class LazyProgressStorage implements ProgressStorage {
         observers.add(observer);
     }
 
-    private void notifyObservers() {
+    private void notifyObservers() throws InterruptedException {
         double averageProgress = getAverageProgress();
         for (ProgressObserver observer : observers) {
             observer.onProgressUpdate(averageProgress);

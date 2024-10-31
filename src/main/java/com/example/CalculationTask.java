@@ -12,11 +12,11 @@ class CalculationTask implements Callable<TaskResultInformation> {
     private final int startStep;
     private final ProgressStorage storage;
 
-    private final CountDownLatch latch;
+    private final CustomCountDownLatch latch;
 
-    private final Semaphore semaphore;
+    private final CustomSemaphore semaphore;
 
-    public CalculationTask(SeriesCalculator calculator, int taskId, int totalSteps, int startStep, ProgressStorage storage, CountDownLatch latch, Semaphore semaphore) {
+    public CalculationTask(SeriesCalculator calculator, int taskId, int totalSteps, int startStep, ProgressStorage storage, CustomCountDownLatch latch, CustomSemaphore semaphore) {
         this.calculator = calculator;
         this.taskId = taskId;
         this.totalSteps = totalSteps;
@@ -46,7 +46,7 @@ class CalculationTask implements Callable<TaskResultInformation> {
         } catch (Exception e) {
             System.out.println("Ошибка в задаче " + taskId + ": " + e.getMessage());
         } finally {
-            latch.countDown(); // Сообщаем, что задача завершена
+            latch.countDown();
             semaphore.release();
         }
 

@@ -31,8 +31,8 @@ public class Main {
         int stepsPerTask = 10000000; // Количество шагов на одну задачу
 
         int numberOfTasks = (totalSteps + stepsPerTask - 1) / stepsPerTask;
-        Semaphore semaphore = new Semaphore(4);
-        CountDownLatch latch = new CountDownLatch(numberOfTasks);
+        CustomSemaphore semaphore = new CustomSemaphore(4);
+        CustomCountDownLatch latch = new CustomCountDownLatch(numberOfTasks);
         ExecutorService executorService = Executors.newFixedThreadPool(numberOfTasks);
         List<Future<TaskResultInformation>> futures = new ArrayList<>();
         long startTime = System.currentTimeMillis();
