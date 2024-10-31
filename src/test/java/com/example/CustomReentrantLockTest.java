@@ -1,6 +1,11 @@
 package com.example;
 
 import org.junit.jupiter.api.Test;
+
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 public class CustomReentrantLockTest {
@@ -125,4 +130,35 @@ public class CustomReentrantLockTest {
         lock.unlock();
         lock.unlock();
     }
+
+    @Test
+    void testCustomReentrantLockRaceCondition() throws InterruptedException {
+        CustomReentrantLock lock = new CustomReentrantLock();
+        ExecutorService executor = Executors.newFixedThreadPool(10);
+
+        final int[] counter = {0}; // Критическая секция
+
+        for (int i = 0; i < 10; i++) {
+            executor.submit(() -> {
+                try {
+                    lock.lock();
+                    int localCounter = counter[0];
+                    localCounter++;
+                    Thread.sleep(10); // имитируем задержку
+                    counter[0] = localCounter;
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } finally {
+                    lock.unlock();
+                }
+            });
+        }
+
+        executor.shutdown();
+        executor.awaitTermination(1, TimeUnit.SECONDS);
+
+        // Проверка, что в результате всех инкрементов счетчик равен количеству потоков
+        assertEquals(10, counter[0], "Counter should be incremented correctly by all threads");
+    }
+
 }

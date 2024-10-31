@@ -1,6 +1,11 @@
 package com.example;
 
 import org.junit.jupiter.api.Test;
+
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 public class CustomCountDownLatchTest {
@@ -143,5 +148,33 @@ public class CustomCountDownLatchTest {
 
         // Проверка, что поток был корректно прерван
         assertTrue(wasInterrupted[0], "Thread should be interrupted during await");
+    }
+
+    @Test
+    void testCustomCountDownLatchRaceCondition() throws InterruptedException {
+        int threadCount = 10;
+        CustomCountDownLatch latch = new CustomCountDownLatch(threadCount);
+        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+
+        final int[] count = {0}; // Отслеживаем завершение потоков
+
+        // Создаем несколько потоков, которые будут вызывать countDown
+        for (int i = 0; i < threadCount; i++) {
+            executor.submit(() -> {
+                latch.countDown();
+                synchronized (count) {
+                    count[0]++;
+                }
+            });
+        }
+
+        executor.shutdown();
+        executor.awaitTermination(1, TimeUnit.SECONDS);
+
+        // Ожидание завершения всех потоков
+        latch.await();
+
+        // Проверка, что все потоки корректно уменьшили счётчик до нуля
+        assertEquals(threadCount, count[0], "All threads should have completed countdown");
     }
 }

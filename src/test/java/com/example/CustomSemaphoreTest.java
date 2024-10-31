@@ -1,6 +1,9 @@
 package com.example;
 import org.junit.jupiter.api.Test;
 
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -90,4 +93,40 @@ public class CustomSemaphoreTest {
         CustomSemaphore semaphore = new CustomSemaphore(0);
         assertFalse(semaphore.tryAcquire(), "Semaphore with zero permits should not allow acquisition");
     }
+
+    @Test
+    void testCustomSemaphoreRaceCondition() throws InterruptedException {
+        int permits = 3;
+        CustomSemaphore semaphore = new CustomSemaphore(permits);
+        ExecutorService executor = Executors.newFixedThreadPool(10);
+
+        final int[] activePermits = {0}; // Отслеживаем использование разрешений
+
+        for (int i = 0; i < 10; i++) {
+            executor.submit(() -> {
+                try {
+                    semaphore.acquire();
+                    synchronized (activePermits) {
+                        activePermits[0]++;
+                        assertTrue(activePermits[0] <= permits, "Active permits should not exceed the maximum permits");
+                    }
+                    Thread.sleep(10); // Задержка, чтобы имитировать использование разрешения
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } finally {
+                    synchronized (activePermits) {
+                        activePermits[0]--;
+                    }
+                    semaphore.release();
+                }
+            });
+        }
+
+        executor.shutdown();
+        executor.awaitTermination(1, TimeUnit.SECONDS);
+
+        // Проверка, что все потоки корректно освободили разрешения
+        assertEquals(0, activePermits[0], "All permits should be released");
+    }
+
 }
