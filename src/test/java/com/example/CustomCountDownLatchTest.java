@@ -4,6 +4,53 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class CustomCountDownLatchTest {
+    @Test
+    void testCountDownLatchReachesZero() throws InterruptedException {
+        CustomCountDownLatch latch = new CustomCountDownLatch(3);
+
+        latch.countDown();
+        latch.countDown();
+        latch.countDown();
+
+        assertTrue(latch.tryAwait(), "Latch should be zero after three countDown calls");
+    }
+
+    @Test
+    void testCountDownLatchAwait() throws InterruptedException {
+        CustomCountDownLatch latch = new CustomCountDownLatch(2);
+
+        Thread thread = new Thread(() -> {
+            try {
+                latch.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+
+        thread.start();
+        Thread.sleep(100); // Ensuring the thread is waiting
+
+        latch.countDown();
+        latch.countDown();
+
+        thread.join();
+        assertTrue(latch.tryAwait(), "Latch should reach zero and allow await to proceed");
+    }
+
+    @Test
+    void testCountDownLatchDoesNotAwaitOnNonZero() throws InterruptedException {
+        CustomCountDownLatch latch = new CustomCountDownLatch(2);
+        assertFalse(latch.tryAwait(), "Latch should not allow await to proceed when count > 0");
+    }
+
+    @Test
+    void testCountDownLatchCountCannotGoNegative() {
+        CustomCountDownLatch latch = new CustomCountDownLatch(1);
+        latch.countDown();
+        latch.countDown();
+
+        assertTrue(latch.tryAwait(), "Latch should not go below zero count");
+    }
 
     @Test
     public void testCountDownLatch() throws InterruptedException {
@@ -56,5 +103,45 @@ public class CustomCountDownLatchTest {
         latch.countDown();
 
         assertTrue(latch.tryAwait());
+    }
+
+    @Test
+    void testCountDownLatchConcurrentCountdown() throws InterruptedException {
+        CustomCountDownLatch latch = new CustomCountDownLatch(5);
+        Thread[] threads = new Thread[5];
+        for (int i = 0; i < 5; i++) {
+            threads[i] = new Thread(latch::countDown);
+            threads[i].start();
+        }
+        for (Thread thread : threads) {
+            thread.join();
+        }
+        assertTrue(latch.tryAwait(), "Latch should reach zero after 5 concurrent countDown calls");
+    }
+
+    @Test
+    void testCountDownLatchAwaitInterruption() throws InterruptedException {
+        CustomCountDownLatch latch = new CustomCountDownLatch(1);
+        final boolean[] wasInterrupted = {false}; // флаг для отслеживания прерывания
+
+        Thread thread = new Thread(() -> {
+            try {
+                latch.await();
+            } catch (InterruptedException e) {
+                wasInterrupted[0] = true; // отмечаем, что прерывание произошло
+            }
+        });
+
+        thread.start();
+
+        // Подождем немного, чтобы убедиться, что поток зашел в метод await()
+        Thread.sleep(50);
+
+        thread.interrupt(); // Прерываем поток
+
+        thread.join(); // Ждем завершения потока
+
+        // Проверка, что поток был корректно прерван
+        assertTrue(wasInterrupted[0], "Thread should be interrupted during await");
     }
 }

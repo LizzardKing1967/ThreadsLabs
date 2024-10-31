@@ -45,4 +45,8 @@ public class CustomReentrantLock {
     private boolean isLocked() {
         return holdCount > 0;
     }
+
+    public int getHoldCount() {
+        return holdCount;
+    }
 }
