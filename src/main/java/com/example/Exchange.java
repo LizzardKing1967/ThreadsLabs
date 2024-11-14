@@ -67,10 +67,21 @@ public class Exchange implements ExchangeInterface {
         Iterator<Order> iterator = oppositeOrders.iterator();
         while (iterator.hasNext() && order.getAmount() > 0) {
             Order oppositeOrder = iterator.next();
-            if ((order.isBuyOrder() && order.getPrice() >= oppositeOrder.getPrice()) ||
-                    (!order.isBuyOrder() && order.getPrice() <= oppositeOrder.getPrice())) {
+
+            // Определение условий для выполнения сделки
+            boolean canExecuteTrade = (order.isBuyOrder() && order.getPrice() >= oppositeOrder.getPrice()) ||
+                    (!order.isBuyOrder() && order.getPrice() <= oppositeOrder.getPrice());
+
+            if (canExecuteTrade) {
                 double tradeAmount = Math.min(order.getAmount(), oppositeOrder.getAmount());
-                executeTrade(order, oppositeOrder, tradeAmount);
+
+                // Передача покупателя и продавца в правильном порядке
+                if (order.isBuyOrder()) {
+                    executeTrade(order, oppositeOrder, tradeAmount); // order - покупатель
+                } else {
+                    executeTrade(oppositeOrder, order, tradeAmount); // oppositeOrder - покупатель
+                }
+
                 if (oppositeOrder.getAmount() == 0) {
                     iterator.remove();
                 }
@@ -79,7 +90,7 @@ public class Exchange implements ExchangeInterface {
     }
 
     private void executeTrade(Order buyOrder, Order sellOrder, double amount) {
-        double tradePrice = (buyOrder.getPrice() + sellOrder.getPrice()) / 2; // Средняя цена сделки
+        double tradePrice = buyOrder.getPrice(); // Используем цену ордера покупателя для сделки
 
         // Проверка наличия достаточных средств у клиентов
         if (buyOrder.getClient().getBalance(buyOrder.getPair().getQuote()) < amount * tradePrice) {
@@ -89,12 +100,15 @@ public class Exchange implements ExchangeInterface {
             throw new IllegalArgumentException("Insufficient funds for seller");
         }
 
+        // Выполнение перевода: покупатель платит в котируемой валюте, продавец получает в базовой
         buyOrder.getClient().withdraw(buyOrder.getPair().getQuote(), amount * tradePrice);
         sellOrder.getClient().withdraw(sellOrder.getPair().getBase(), amount);
 
+        // Покупатель получает базовую валюту, продавец получает котируемую валюту
         buyOrder.getClient().deposit(buyOrder.getPair().getBase(), amount);
         sellOrder.getClient().deposit(sellOrder.getPair().getQuote(), amount * tradePrice);
 
+        // Обновление оставшихся объемов ордеров
         buyOrder.decreaseAmount(amount);
         sellOrder.decreaseAmount(amount);
 

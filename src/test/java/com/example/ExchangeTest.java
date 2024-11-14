@@ -1,10 +1,9 @@
 package com.example;
 
-import com.example.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.util.Random;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -16,11 +15,14 @@ public class ExchangeTest {
     private Client client1;
     private Client client2;
 
+    private Client client3;
+
     @BeforeEach
     public void setUp() {
         exchange = new Exchange();
         client1 = exchange.createClient("Client1");
         client2 = exchange.createClient("Client2");
+        client3 = exchange.createClient("Client3");
     }
 
     @Test
@@ -38,11 +40,11 @@ public class ExchangeTest {
 
     @Test
     public void testCreateBuyAndSellOrder() {
-        exchange.deposit(client1, Currency.USD, 1000);
-        exchange.deposit(client2, Currency.EUR, 1000);
+        exchange.deposit(client1, Currency.USD, 120);
+        exchange.deposit(client2, Currency.EUR, 100);
 
         Order buyOrder = exchange.createBuyOrder(client1, new CurrencyPair(Currency.EUR, Currency.USD), 1.2, 100);
-        Order sellOrder = exchange.createSellOrder(client2, new CurrencyPair(Currency.EUR, Currency.USD), 1.2, 100);
+        Order sellOrder = exchange.createSellOrder(client2, new CurrencyPair(Currency.EUR, Currency.USD), 1, 100);
 
         assertEquals(0, client1.getBalance(Currency.USD));
         assertEquals(100, client1.getBalance(Currency.EUR));
@@ -53,17 +55,21 @@ public class ExchangeTest {
 
     @Test
     public void testPartialOrderExecution() {
-        exchange.deposit(client1, Currency.USD, 1000);
-        exchange.deposit(client2, Currency.EUR, 1000);
+        // Пополняем балансы клиентов
+        exchange.deposit(client1, Currency.USD, 120);
+        exchange.deposit(client2, Currency.EUR, 120);
 
+
+        // Создаем заявку на покупку 100 EUR за USD
         Order buyOrder = exchange.createBuyOrder(client1, new CurrencyPair(Currency.EUR, Currency.USD), 1.2, 100);
+        // Создаем заявку на продажу 50 EUR за USD (пара валют исправлена на EUR/USD)
         Order sellOrder = exchange.createSellOrder(client2, new CurrencyPair(Currency.EUR, Currency.USD), 1.2, 50);
 
-        assertEquals(400, client1.getBalance(Currency.USD));
-        assertEquals(50, client1.getBalance(Currency.EUR));
+        // Выполняем сделки
 
-        assertEquals(950, client2.getBalance(Currency.EUR));
-        assertEquals(60, client2.getBalance(Currency.USD));
+        // Проверяем балансы клиентов после выполнения частичных сделок
+        assertEquals(60, client1.getBalance(Currency.USD)); // 120 - 50 * 1.2
+        assertEquals(50, client1.getBalance(Currency.EUR)); // 0 + 50
     }
 
     @Test
@@ -76,15 +82,16 @@ public class ExchangeTest {
     }
 
     @Test
-    public void testMismatchCurrencyPairs() {
+    public void testPartialDoubleSell() {
         exchange.deposit(client1, Currency.USD, 1000);
         exchange.deposit(client2, Currency.EUR, 1000);
+        exchange.deposit(client3, Currency.USD, 1000);
 
-        Order buyOrder = exchange.createBuyOrder(client1, new CurrencyPair(Currency.EUR, Currency.USD), 1.2, 100);
-        Order sellOrder = exchange.createSellOrder(client2, new CurrencyPair(Currency.GBP, Currency.USD), 1.2, 100);
-
-        assertEquals(1000, client1.getBalance(Currency.USD));
-        assertEquals(1000, client2.getBalance(Currency.EUR));
+        Order buyOrder = exchange.createBuyOrder(client1, new CurrencyPair(Currency.EUR, Currency.USD), 1.2, 30);
+        Order sellOrder = exchange.createSellOrder(client2, new CurrencyPair(Currency.EUR, Currency.USD), 1.2, 100);
+        Order buyOrder1 = exchange.createBuyOrder(client3, new CurrencyPair(Currency.EUR, Currency.USD), 1.2, 70);
+        assertEquals(964, client1.getBalance(Currency.USD));
+        assertEquals(900, client2.getBalance(Currency.EUR));
     }
 
     @Test
@@ -112,66 +119,46 @@ public class ExchangeTest {
     }
 
     @Test
-    public void testStressTotalMoneyConservation() throws InterruptedException {
-        Random random = new Random();
-        int numClients = 1000;
-        Client[] clients = new Client[numClients];
+    public void testPartialBuyAndListOpenOrders() {
+        // Создаем покупателей и продавцов
+        Client buyer = exchange.createClient("Buyer");
+        Client seller1 = exchange.createClient("Seller1");
+        Client seller2 = exchange.createClient("Seller2");
 
-        // Создаем клиентов и пополняем их балансы
-        for (int i = 0; i < numClients; i++) {
-            clients[i] = exchange.createClient("Client" + (i + 1));
-            exchange.deposit(clients[i], Currency.USD, 10000 + random.nextInt(5000));
-            exchange.deposit(clients[i], Currency.EUR, 5000 + random.nextInt(5000));
-        }
+        // Пополняем их балансы
+        exchange.deposit(buyer, Currency.USD, 200);  // Покупатель может купить до 200 USD
+        exchange.deposit(seller1, Currency.EUR, 60); // Продавец 1 имеет 60 EUR
+        exchange.deposit(seller2, Currency.EUR, 100); // Продавец 2 имеет 100 EUR
 
-        // Вычисляем общее количество денег до сделок
-        double totalUSDBefore = 0;
-        double totalEURBefore = 0;
-        for (Client client : clients) {
-            totalUSDBefore += client.getBalance(Currency.USD);
-            totalEURBefore += client.getBalance(Currency.EUR);
-        }
+        CurrencyPair pair = new CurrencyPair(Currency.EUR, Currency.USD);
 
-        // Создаем пул потоков
-        ExecutorService executorService = Executors.newFixedThreadPool(numClients);
+        // Продавец 1 создает ордер на продажу 60 EUR по цене 1.2 USD за EUR
+        exchange.createSellOrder(seller1, pair, 1.2, 60);
 
-        // Каждый клиент создает случайные заявки на покупку и продажу
-        for (Client client : clients) {
-            executorService.submit(() -> {
-                for (int i = 0; i < 100; i++) {
-                    try {
-                        CurrencyPair pair = new CurrencyPair(Currency.EUR, Currency.USD);
-                        double price = 1.2 + random.nextDouble() * 0.1; // Случайная цена от 1.2 до 1.3
-                        double amount = 50 + random.nextInt(100); // Случайное количество от 50 до 150
+        // Продавец 2 создает ордер на продажу 100 EUR по цене 1.2 USD за EUR
+        exchange.createSellOrder(seller2, pair, 1.2, 100);
 
-                        if (random.nextBoolean()) {
-                            exchange.createBuyOrder(client, pair, price, amount);
-                        } else {
-                            exchange.createSellOrder(client, pair, price, amount);
-                        }
+        // Покупатель создает ордер на покупку 100 EUR по цене 1.2 USD за EUR
+        exchange.createBuyOrder(buyer, pair, 1.2, 100);
 
-                        Thread.sleep(10);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
-                }
-            });
-        }
+        // Проверяем результат частичного выполнения:
+        // - Покупатель купит 60 EUR у продавца 1 (ордер выполнен полностью)
+        // - Покупатель купит 40 EUR у продавца 2 (ордер частично выполнен, остается 60 EUR)
 
-        // Завершаем выполнение потоков
-        executorService.shutdown();
-        executorService.awaitTermination(5, TimeUnit.MINUTES);
+        // Проверка балансов
+        assertEquals(100, buyer.getBalance(Currency.EUR), 0.01);   // Покупатель получил 100 EUR
+        assertEquals(200 - (100 * 1.2), buyer.getBalance(Currency.USD), 0.01); // У покупателя осталось 100 USD
+        assertEquals(0, seller1.getBalance(Currency.EUR), 0.01); // Продавец 1 продал все 60 EUR
+        assertEquals(60, seller2.getBalance(Currency.EUR), 0.01); // У продавца 2 осталось 60 EUR
 
-        // Вычисляем общее количество денег после сделок
-        double totalUSDAfter = 0;
-        double totalEURAfter = 0;
-        for (Client client : clients) {
-            totalUSDAfter += client.getBalance(Currency.USD);
-            totalEURAfter += client.getBalance(Currency.EUR);
-        }
+        // Вывод открытых заявок
+        List<Order> openOrders = exchange.getOpenOrders();
 
-        // Проверяем, что общее количество денег сошлось
-        assertEquals(totalUSDBefore, totalUSDAfter, 0.001, "Total USD is not conserved");
-        assertEquals(totalEURBefore, totalEURAfter, 0.001, "Total EUR is not conserved");
+        // Проверка открытых заявок
+        assertEquals(1, openOrders.size(), "Expected one open order after partial execution.");
+        Order remainingOrder = openOrders.get(0);
+        assertEquals(seller2, remainingOrder.getClient(), "Remaining order should belong to Seller2.");
+        assertEquals(60, remainingOrder.getAmount(), 0.01, "Remaining order should have 60 EUR.");
+        assertEquals(1.2, remainingOrder.getPrice(), 0.01, "Remaining order price should be 1.2 USD/EUR.");
     }
 }

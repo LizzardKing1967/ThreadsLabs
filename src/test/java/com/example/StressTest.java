@@ -3,6 +3,8 @@ package com.example;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -22,34 +24,46 @@ public class StressTest {
         int numClients = 1000;
         clients = new Client[numClients];
 
-        // Создаем клиентов и пополняем их балансы
+        // Создаем клиентов и пополняем их балансы для всех валют
         for (int i = 0; i < numClients; i++) {
             clients[i] = exchange.createClient("Client" + (i + 1));
-            exchange.deposit(clients[i], Currency.USD, 10000 + random.nextInt(5000));
-            exchange.deposit(clients[i], Currency.EUR, 5000 + random.nextInt(5000));
+            for (Currency currency : Currency.values()) {
+                exchange.deposit(clients[i], currency, 5000 + random.nextInt(5000)); // Баланс от 5000 до 10000 для каждой валюты
+            }
         }
     }
 
     @Test
     public void testTotalMoneyConservation() throws InterruptedException {
-        // Вычисляем общее количество денег до сделок
-        double totalUSDBefore = 0;
-        double totalEURBefore = 0;
+        // Вычисляем общее количество денег до сделок для всех валют
+        Map<Currency, Double> totalBefore = new HashMap<>();
+        for (Currency currency : Currency.values()) {
+            totalBefore.put(currency, 0.0);
+        }
+
         for (Client client : clients) {
-            totalUSDBefore += client.getBalance(Currency.USD);
-            totalEURBefore += client.getBalance(Currency.EUR);
+            for (Currency currency : Currency.values()) {
+                totalBefore.put(currency, totalBefore.get(currency) + client.getBalance(currency));
+            }
         }
 
         // Создаем пул потоков
         ExecutorService executorService = Executors.newFixedThreadPool(clients.length);
 
-        // Каждый клиент создает случайные заявки на покупку и продажу
+        // Каждый клиент создает случайные заявки на покупку и продажу для случайных пар валют
         for (Client client : clients) {
             executorService.submit(() -> {
                 for (int i = 0; i < 100; i++) {
                     try {
-                        CurrencyPair pair = new CurrencyPair(Currency.EUR, Currency.USD);
-                        double price = 1.2 + random.nextDouble() * 0.1; // Случайная цена от 1.2 до 1.3
+                        // Генерация случайной валютной пары
+                        Currency baseCurrency = Currency.values()[random.nextInt(Currency.values().length)];
+                        Currency quoteCurrency;
+                        do {
+                            quoteCurrency = Currency.values()[random.nextInt(Currency.values().length)];
+                        } while (quoteCurrency == baseCurrency);
+
+                        CurrencyPair pair = new CurrencyPair(baseCurrency, quoteCurrency);
+                        double price = 0.5 + random.nextDouble() * 1.5; // Случайная цена от 0.5 до 2.0
                         double amount = 50 + random.nextInt(100); // Случайное количество от 50 до 150
 
                         if (random.nextBoolean()) {
@@ -70,16 +84,22 @@ public class StressTest {
         executorService.shutdown();
         executorService.awaitTermination(5, TimeUnit.MINUTES);
 
-        // Вычисляем общее количество денег после сделок
-        double totalUSDAfter = 0;
-        double totalEURAfter = 0;
-        for (Client client : clients) {
-            totalUSDAfter += client.getBalance(Currency.USD);
-            totalEURAfter += client.getBalance(Currency.EUR);
+        // Вычисляем общее количество денег после сделок для всех валют
+        Map<Currency, Double> totalAfter = new HashMap<>();
+        for (Currency currency : Currency.values()) {
+            totalAfter.put(currency, 0.0);
         }
 
-        // Проверяем, что общее количество денег сошлось
-        assertEquals(totalUSDBefore, totalUSDAfter, 0.001, "Total USD is not conserved");
-        assertEquals(totalEURBefore, totalEURAfter, 0.001, "Total EUR is not conserved");
+        for (Client client : clients) {
+            for (Currency currency : Currency.values()) {
+                totalAfter.put(currency, totalAfter.get(currency) + client.getBalance(currency));
+            }
+        }
+
+        // Проверяем, что общее количество денег сошлось для каждой валюты
+        for (Currency currency : Currency.values()) {
+            assertEquals(totalBefore.get(currency), totalAfter.get(currency), 0.001,
+                    "Total " + currency + " is not conserved");
+        }
     }
 }
