@@ -1,78 +1,62 @@
 package com.example;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Scanner;
-import java.util.concurrent.*;
+import java.util.Random;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 public class Main {
+    public static void main(String[] args) throws InterruptedException {
+        Exchange exchange = new Exchange();
+        Random random = new Random();
 
-    public static void main(String[] args) {
-        Scanner scanner = new Scanner(System.in);
-
-        System.out.println("Выберите хранилище: ");
-        System.out.println("1. Хранилище c ленивой инициализацией");
-        System.out.println("2. Хранилище без ленивой инициализации");
-        int choice = scanner.nextInt();
-
-        ProgressStorage storage;
-
-        if (choice == 1) {
-            storage = LazyProgressStorage.getInstance();
-        } else {
-            storage = ImmediateProgressStorage.getInstance();
+        // Создаем 50 клиентов
+        Client[] clients = new Client[50];
+        for (int i = 0; i < clients.length; i++) {
+            clients[i] = exchange.createClient("Client" + (i + 1));
+            // Пополняем балансы клиентов случайными суммами
+            exchange.deposit(clients[i], Currency.USD, 10000 + random.nextInt(5000));
+            exchange.deposit(clients[i], Currency.EUR, 5000 + random.nextInt(5000));
         }
 
-        ConsoleProgressObserver observer = new ConsoleProgressObserver();
-        storage.setObserver(observer);
+        // Создаем пул потоков
+        ExecutorService executorService = Executors.newFixedThreadPool(50);
 
-        SeriesCalculator calculator = new SeriesCalculator();
-        int totalSteps = 100000000; // Общее количество шагов
-        int stepsPerTask = 10000000; // Количество шагов на одну задачу
+        // Каждый клиент создает случайные заявки на покупку и продажу
+        for (Client client : clients) {
+            executorService.submit(() -> {
+                for (int i = 0; i < 10; i++) {
+                    try {
+                        CurrencyPair pair = new CurrencyPair(Currency.EUR, Currency.USD);
+                        double price = 1.2 + random.nextDouble() * 0.1; // Случайная цена от 1.2 до 1.3
+                        double amount = 50 + random.nextInt(100); // Случайное количество от 50 до 150
 
-        int numberOfTasks = (totalSteps + stepsPerTask - 1) / stepsPerTask;
-        CustomSemaphore semaphore = new CustomSemaphore(4);
-        CustomCountDownLatch latch = new CustomCountDownLatch(numberOfTasks);
-        ExecutorService executorService = Executors.newFixedThreadPool(numberOfTasks);
-        List<Future<TaskResultInformation>> futures = new ArrayList<>();
-        long startTime = System.currentTimeMillis();
+                        if (random.nextBoolean()) {
+                            Order order = exchange.createBuyOrder(client, pair, price, amount);
+                            System.out.println(client.getName() + " created buy order: " + order);
+                        } else {
+                            Order order = exchange.createSellOrder(client, pair, price, amount);
+                            System.out.println(client.getName() + " created sell order: " + order);
+                        }
 
-        // Создаем и запускаем задачи динамически
-        for (int i = 0; i < numberOfTasks; i++) {
-            int taskId = i + 1;
-            int startStep = i * stepsPerTask + 1;
-            int taskSteps = Math.min(stepsPerTask, totalSteps - (i * stepsPerTask)); // Последняя задача может быть меньше
-            CalculationTask task = new CalculationTask(calculator, taskId, taskSteps, startStep, storage, latch, semaphore);
-            futures.add(executorService.submit(task));
+                        Thread.sleep(100);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+            });
         }
 
-        try {
-            latch.await();
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-        long overallCompletionTime = System.currentTimeMillis();
-        double timeDifference = 0;
-
-        for (Future<TaskResultInformation> future : futures) {
-            try {
-                timeDifference = overallCompletionTime - future.get().getCompletionTime();
-                System.out.println("Задача c id: " + future.get().getTaskId() + " Выполнена раньше завершения всех задач на: " + timeDifference + " мс.");
-            } catch (InterruptedException e) {
-                System.out.println("Ожидание задачи было прервано: " + e.getMessage());
-                Thread.currentThread().interrupt();  // Восстанавливаем флаг прерывания
-            } catch (ExecutionException e) {
-                System.out.println("Ошибка в выполнении задачи: " + e.getCause());  // Получаем исходное исключение
-            } catch (Exception e) {
-                System.out.println("Неизвестная ошибка: " + e.getMessage());
-            }
-        }
-
+        // Завершаем выполнение потоков
         executorService.shutdown();
-        double totalResult = storage.getTotalResult();
-        long endTime = System.currentTimeMillis();
-        System.out.println("Результат вычисления: " + totalResult);
-        System.out.println("Общее время выполнения: " + (endTime - startTime) + " мс.");
-        System.out.println("Все задачи завершены.");
+        executorService.awaitTermination(1, TimeUnit.MINUTES);
+
+        // Выводим состояние клиентов после всех сделок
+        for (Client client : clients) {
+            System.out.println(client.getName() + " state: " + exchange.getClientState(client));
+        }
+
+        // Выводим открытые заявки
+        System.out.println("Open orders: " + exchange.getOpenOrders());
     }
 }
