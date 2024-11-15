@@ -90,6 +90,7 @@ public class Exchange implements ExchangeInterface {
     }
 
     private void executeTrade(Order buyOrder, Order sellOrder, double amount) {
+
         double tradePrice = buyOrder.getPrice(); // Используем цену ордера покупателя для сделки
 
         // Проверка наличия достаточных средств у клиентов
