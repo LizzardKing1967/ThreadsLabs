@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import java.text.DecimalFormat;
 import java.util.*;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -52,11 +53,19 @@ public class StressTest {
         // Создаем пул потоков
         ExecutorService executorService = Executors.newFixedThreadPool(clients.length);
 
+        // Создаем CountDownLatch для ожидания готовности всех потоков
+        CountDownLatch readyLatch = new CountDownLatch(clients.length);
+
+        // Создаем CountDownLatch для одновременного запуска всех сделок
+        CountDownLatch startLatch = new CountDownLatch(1);
+
         // Каждый клиент создает случайные заявки на покупку и продажу для случайных пар валют
         for (Client client : clients) {
             executorService.submit(() -> {
-                for (int i = 0; i < 100; i++) {
-                    try {
+                try {
+                    // Генерация случайных заявок
+                    List<Runnable> tasks = new ArrayList<>();
+                    for (int i = 0; i < 100; i++) {
                         // Генерация случайной валютной пары
                         Currency baseCurrency = Currency.values()[random.nextInt(Currency.values().length)];
                         Currency quoteCurrency;
@@ -68,22 +77,48 @@ public class StressTest {
                         double price = 0.5 + random.nextDouble() * 1.5; // Случайная цена от 0.5 до 2.0
                         double amount = 50 + random.nextInt(100); // Случайное количество от 50 до 150
 
+                        // Логирование цены сделок USD/EUR
                         if (pair.equals(new CurrencyPair(Currency.USD, Currency.EUR)) && random.nextBoolean()) {
-                            exchange.createBuyOrder(client, pair, price, amount);
-                            usdEurBuyPrices.add(price); // Логируем цену сделки для пары USD/EUR (покупка EUR за USD)
+                            tasks.add(() -> {
+                                exchange.createBuyOrder(client, pair, price, amount);
+                                usdEurBuyPrices.add(price); // Логируем цену сделки для пары USD/EUR (покупка EUR за USD)
+                            });
                         } else {
-                            exchange.createSellOrder(client, pair, price, amount);
+                            // Добавляем заявку на покупку или продажу
+                            if (random.nextBoolean()) {
+                                tasks.add(() -> exchange.createBuyOrder(client, pair, price, amount));
+                            } else {
+                                tasks.add(() -> exchange.createSellOrder(client, pair, price, amount));
+                            }
                         }
-
-                        Thread.sleep(10);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
                     }
+
+                    // Поток готов к выполнению сделок
+                    readyLatch.countDown();
+
+                    // Ожидаем, пока все потоки будут готовы
+                    readyLatch.await();
+
+                    // Ожидаем сигнала на запуск сделок
+                    startLatch.await();
+
+                    // Выполняем все сделки
+                    for (Runnable task : tasks) {
+                        task.run();
+                    }
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
                 }
             });
         }
 
-        // Завершаем выполнение потоков
+        // Ожидаем, пока все потоки будут готовы
+        readyLatch.await();
+
+        // Запускаем все сделки одновременно
+        startLatch.countDown();
+
+        // Завершаем выполнение пула потоков
         executorService.shutdown();
         executorService.awaitTermination(5, TimeUnit.MINUTES);
 

@@ -120,7 +120,6 @@ public class ExchangeTest {
 
     @Test
     public void testPartialBuyAndListOpenOrders() {
-        // Создаем покупателей и продавцов
         Client buyer = exchange.createClient("Buyer");
         Client seller1 = exchange.createClient("Seller1");
         Client seller2 = exchange.createClient("Seller2");
