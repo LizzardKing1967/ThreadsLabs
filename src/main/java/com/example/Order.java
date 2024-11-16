@@ -1,41 +1,67 @@
 package com.example;
 
-public class Order {
-    private Client client;
-    private CurrencyPair pair;
-    private double price;
-    private double amount;
-    private boolean isBuyOrder;
+import java.math.BigDecimal;
 
-    public Order(Client client, CurrencyPair pair, double price, double amount, boolean isBuyOrder) {
+public class Order {
+    private final Client client;
+    private final CurrencyPair pair;
+    private final Long price;
+    private Long amount;
+    private final OrderType type;
+    private boolean isFulfilled;
+
+    public Order(Client client, CurrencyPair pair, Long price, Long amount, OrderType type) {
         this.client = client;
         this.pair = pair;
         this.price = price;
         this.amount = amount;
-        this.isBuyOrder = isBuyOrder;
+        this.type = type;
+        this.isFulfilled = false;
     }
 
     public Client getClient() {
         return client;
     }
 
+    public void setFulfilled(boolean fulfilled) {
+        isFulfilled = fulfilled;
+    }
+
     public CurrencyPair getPair() {
         return pair;
     }
 
-    public double getPrice() {
+    public Long getPrice() {
         return price;
     }
 
-    public double getAmount() {
+    public Long getAmount() {
         return amount;
     }
 
-    public boolean isBuyOrder() {
-        return isBuyOrder;
+    public OrderType getType() {
+        return type;
     }
 
-    public void decreaseAmount(double amount) {
-        this.amount -= amount;
+    public boolean isFulfilled() {
+        return isFulfilled;
+    }
+
+    @Override
+    public String toString() {
+        return "Order{" +
+                "client=" + client.getName() +
+                ", pair=" + pair.getBase() + "/" + pair.getQuote() +
+                ", price=" + price +
+                ", amount=" + amount +
+                ", type=" + type +
+                '}';
+    }
+
+    public synchronized void decreaseAmount(long tradeAmount) {
+        this.amount-=tradeAmount;
+        if (this.amount<=0) {
+            this.isFulfilled = true;
+        }
     }
 }

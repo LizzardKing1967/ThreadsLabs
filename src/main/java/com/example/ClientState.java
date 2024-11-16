@@ -4,9 +4,9 @@ import java.util.Map;
 
 public class ClientState {
     private String name;
-    private Map<Currency, Double> balances;
+    private Map<Currency, Long> balances;
 
-    public ClientState(String name, Map<Currency, Double> balances) {
+    public ClientState(String name, Map<Currency, Long> balances) {
         this.name = name;
         this.balances = balances;
     }
@@ -15,7 +15,7 @@ public class ClientState {
         return name;
     }
 
-    public Map<Currency, Double> getBalances() {
+    public Map<Currency, Long> getBalances() {
         return balances;
     }
 }
