@@ -49,8 +49,8 @@ public class OrderProcessor {
     }
 
     private void matchOrders(Order newOrder) {
-        for (Order existingOrder : openOrders) {  // Для CopyOnWriteArrayList можно работать без синхронизации
-            if (canMatch(newOrder, existingOrder)) {
+        for (Order existingOrder : openOrders) {
+            if (canMatch(newOrder, existingOrder) && !newOrder.getClient().equals(existingOrder.getClient())) {
                 executeTrade(newOrder, existingOrder);
                 if (newOrder.isFulfilled()) {
                     openOrders.remove(newOrder); // Работа с CopyOnWriteArrayList безопасна
@@ -79,23 +79,48 @@ public class OrderProcessor {
 
         orderLock.lock();
         try {
-            // Логирование до обновления баланса
-            System.out.println(String.format("Executing trade: Buyer=%s, Seller=%s, Amount=%d, Price=%d",
-                    buyOrder.getClient().getName(),
-                    sellOrder.getClient().getName(),
-                    tradeAmount,
-                    tradePrice));
-
-            // Обновление баланса участников
-            updateBalance(buyOrder.getClient(), sellOrder.getClient(), buyOrder.getPair(), tradeAmount, tradePrice);
-
-            // Уменьшение объемов ордеров
-            buyOrder.decreaseAmount(tradeAmount);
-            sellOrder.decreaseAmount(tradeAmount);
-
-            // Проверка выполнения ордеров
+            boolean tradeSuccess = updateBalance(buyOrder.getClient(), sellOrder.getClient(), buyOrder.getPair(), tradeAmount, tradePrice);
+            if (tradeSuccess) {
+                logTrade(buyOrder, sellOrder, tradeAmount, tradePrice);
+                buyOrder.decreaseAmount(tradeAmount);
+                sellOrder.decreaseAmount(tradeAmount);
+            }
         } finally {
             orderLock.unlock();
+        }
+    }
+    private final Lock balanceLock = new ReentrantLock();
+
+    private boolean updateBalance(Client buyer, Client seller, CurrencyPair pair, long tradeAmount, long tradePrice) {
+        Currency baseCurrency = pair.getBase();
+        Currency quoteCurrency = pair.getQuote();
+
+        balanceLock.lock();
+        try {
+            // Проверяем доступные средства у сторон
+            long buyerRequiredFunds = tradeAmount * tradePrice;
+            if (!balanceManager.hasSufficientFunds(buyer, quoteCurrency, buyerRequiredFunds)) {
+                System.err.println("Buyer has insufficient funds.");
+                return false;
+            }
+            if (!balanceManager.hasSufficientFunds(seller, baseCurrency, tradeAmount)) {
+                System.err.println("Seller has insufficient goods.");
+                return false;
+            }
+
+            // Выполняем транзакцию
+            balanceManager.withdraw(buyer, quoteCurrency, buyerRequiredFunds);
+            balanceManager.deposit(buyer, baseCurrency, tradeAmount);
+
+            balanceManager.withdraw(seller, baseCurrency, tradeAmount);
+            balanceManager.deposit(seller, quoteCurrency, buyerRequiredFunds);
+
+            return true;
+        } catch (Exception e) {
+            System.err.println("Failed to execute trade: " + e.getMessage());
+            return false;
+        } finally {
+            balanceLock.unlock();
         }
     }
 
@@ -111,34 +136,7 @@ public class OrderProcessor {
         System.out.println(message);
     }
 
-    private final Lock balanceLock = new ReentrantLock();
 
-    private void updateBalance(Client buyer, Client seller, CurrencyPair pair, long tradeAmount, long tradePrice) {
-        Currency baseCurrency = pair.getBase();
-        Currency quoteCurrency = pair.getQuote();
-
-        // Синхронизируем операции снятия и внесения средств с помощью блокировки
-        balanceLock.lock();
-        try {
-            // Сначала снимаем средства с покупателя
-            long buyerWithdrawAmount = tradeAmount * tradePrice;
-            balanceManager.withdraw(buyer, quoteCurrency, buyerWithdrawAmount); // Снимаем средства у покупателя
-            balanceManager.deposit(buyer, baseCurrency, tradeAmount); // Вносим средства покупателю
-
-            // Теперь снимаем средства с продавца
-            balanceManager.withdraw(seller, baseCurrency, tradeAmount); // Снимаем средства у продавца
-            balanceManager.deposit(seller, quoteCurrency, tradeAmount * tradePrice); // Вносим средства продавцу
-
-            // Логирование после успешного выполнения транзакции
-            System.out.println(String.format("Balance updated: Buyer=%s, Seller=%s, Base=%s, Quote=%s, Amount=%d, Price=%d",
-                    buyer.getName(), seller.getName(), baseCurrency, quoteCurrency, tradeAmount, tradePrice));
-        } catch (IllegalArgumentException e) {
-            // Обработка ошибок снятия средств (например, недостаточно средств)
-            System.err.println("Failed to update balances: " + e.getMessage());
-        } finally {
-            balanceLock.unlock(); // Всегда снимаем блокировку в блоке finally
-        }
-    }
 
     public List<Order> getOpenOrders() {
         return new ArrayList<>(openOrders);

@@ -41,26 +41,74 @@ public class Exchange implements ExchangeInterface {
     @Override
     public CompletableFuture<Order> createBuyOrder(Client client, CurrencyPair pair, Long price, Long amount) {
         CompletableFuture<Order> futureOrder = new CompletableFuture<>();
+
         CompletableFuture.runAsync(() -> {
-            orderQueue.add(() -> {
-                Order order = new Order(client, pair, price, amount, OrderType.BUY);
-                orderProcessor.processOrder(order);
-                futureOrder.complete(order);
-            });
+            long requiredAmount = price * amount; // Сумма, необходимая для покупки
+
+            boolean isFundsReserved = false;
+            try {
+                isFundsReserved = balanceManager.tryReserveFunds(client, pair.getQuote(), requiredAmount); // Попытка зарезервировать средства
+
+                if (isFundsReserved) {
+                    // Если средства зарезервированы, добавляем заявку в очередь
+                    orderQueue.add(() -> {
+                        try {
+                            Order order = new Order(client, pair, price, amount, OrderType.BUY);
+                            orderProcessor.processOrder(order);
+                            futureOrder.complete(order);
+                        } catch (Exception e) {
+                            futureOrder.completeExceptionally(e);
+                        }
+                    });
+                } else {
+                    System.out.println("Insufficient funds for client " + client.getName() + " to buy " + amount + " of " + pair.getBase());
+                    futureOrder.completeExceptionally(new InsufficientFundsException("Insufficient funds for the purchase"));
+                }
+            } catch (Exception e) {
+                System.err.println("Error reserving funds: " + e.getMessage());
+                futureOrder.completeExceptionally(e);
+            } finally {
+                if (!isFundsReserved) {
+                    balanceManager.rollbackReserve(client, pair.getQuote(), requiredAmount); // Откат резервирования, если не получилось
+                }
+            }
         }, executorService);
+
         return futureOrder;
     }
-
     @Override
     public CompletableFuture<Order> createSellOrder(Client client, CurrencyPair pair, Long price, Long amount) {
         CompletableFuture<Order> futureOrder = new CompletableFuture<>();
+
         CompletableFuture.runAsync(() -> {
-            orderQueue.add(() -> {
-                Order order = new Order(client, pair, price, amount, OrderType.SELL);
-                orderProcessor.processOrder(order);
-                futureOrder.complete(order);
-            });
+            boolean isGoodsReserved = false;
+            try {
+                isGoodsReserved = balanceManager.tryReserveFunds(client, pair.getBase(), amount); // Попытка зарезервировать товар
+
+                if (isGoodsReserved) {
+                    orderQueue.add(() -> {
+                        try {
+                            Order order = new Order(client, pair, price, amount, OrderType.SELL);
+                            orderProcessor.processOrder(order);
+                            futureOrder.complete(order);
+                        } catch (Exception e) {
+                            futureOrder.completeExceptionally(e);
+                        }
+                    });
+                } else {
+                    System.out.println("Insufficient goods for client " + client.getName() + " to sell " + amount + " of " + pair.getBase());
+                    futureOrder.completeExceptionally(new InsufficientFundsException("Insufficient goods for the sale"));
+                }
+            } catch (Exception e) {
+                System.err.println("Error reserving goods: " + e.getMessage());
+                futureOrder.completeExceptionally(e);
+            } finally {
+                if (!isGoodsReserved) {
+                    balanceManager.rollbackReserve(client, pair.getBase(), amount); // Откат резервирования товара
+                }
+            }
         }, executorService);
+
         return futureOrder;
     }
 

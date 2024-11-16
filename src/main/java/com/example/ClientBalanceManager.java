@@ -39,23 +39,45 @@ public class ClientBalanceManager {
     }
 
     // Операция снятия средств
-    public void withdraw(Client client, Currency currency, long amount) {
+    public boolean withdraw(Client client, Currency currency, long amount) {
         Lock lock = clientLocks.computeIfAbsent(client, k -> new ReentrantLock());
-
         lock.lock(); // Блокируем клиента перед операцией
         try {
-            clientBalances.computeIfAbsent(client, k -> new ConcurrentHashMap<>())
-                    .compute(currency, (key, current) -> {
-                        if (current == null || current < amount) {
-                            throw new IllegalArgumentException("Insufficient funds");
-                        }
-                        return current - amount;
-                    });
-        } catch (IllegalArgumentException e) {
-            System.err.println("Error: " + e.getMessage() + " for client " + client.getName() + " and currency " + currency);
+            Map<Currency, Long> balances = clientBalances.computeIfAbsent(client, k -> new ConcurrentHashMap<>());
+            if (balances.getOrDefault(currency, 0L) < amount) {
+                return false; // Недостаточно средств
+            }
+            balances.merge(currency, -amount, Long::sum);
+            return true; // Операция выполнена успешно
         } finally {
-            lock.unlock(); // Обязательно освобождаем блокировку
+            lock.unlock(); // Освобождаем блокировку
         }
+    }
+
+    public boolean tryReserveFunds(Client client, Currency currency, long amount) {
+        Lock lock = clientLocks.computeIfAbsent(client, k -> new ReentrantLock());
+        lock.lock();
+        try {
+            long currentBalance = clientBalances
+                    .computeIfAbsent(client, k -> new ConcurrentHashMap<>())
+                    .getOrDefault(currency, 0L);
+            if (currentBalance >= amount) {
+                clientBalances.get(client).merge(currency, -amount, Long::sum); // Резервируем средства
+                return true;
+            }
+            return false;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    // Метод для отката резервирования
+    public boolean hasSufficientFunds(Client client, Currency currency, long amount) {
+        return getBalance(client, currency) >= amount;
+    }
+
+    public synchronized void rollbackReserve(Client client, Currency currency, long amount) {
+        deposit(client, currency, amount); // Возвращаем средства в случае отката
     }
 
     // Получение всех балансов клиента
@@ -63,4 +85,6 @@ public class ClientBalanceManager {
         Map<Currency, Long> balances = clientBalances.get(client);
         return balances != null ? Map.copyOf(balances) : Map.of();
     }
+
+
 }

@@ -28,7 +28,7 @@ public class StressTest {
             clients[i] = exchange.createClient("Client" + (i + 1));
             for (Currency currency : Currency.values()) {
                 // Баланс от 5000 до 10000 для каждой валюты
-                exchange.deposit(clients[i], currency, (long) (50000 + random.nextInt(50000)));
+                exchange.deposit(clients[i], currency,  (5000 + random.nextLong(5000)));
             }
         }
 
@@ -136,7 +136,7 @@ public class StressTest {
                         exchange.getClientBalanceManager().getBalance(client, currency));
             }
         }
-        long tolerance = 1000; // Допустимая погрешность
+        long tolerance = 10; // Допустимая погрешность
         // Проверяем, что общее количество денег сохраняется для каждой валюты
         for (Currency currency : Currency.values()) {
             assertEquals(totalBefore.get(currency), totalAfter.get(currency), tolerance,
