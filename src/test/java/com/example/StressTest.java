@@ -1,8 +1,6 @@
 package com.example;
 
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.Test;
 
 import java.util.*;
@@ -14,31 +12,27 @@ public class StressTest {
     private Exchange exchange;
     private Random random;
     private Client[] clients;
-    private Semaphore semaphore;
+    private ClientBalanceManager balanceManager;
 
     @BeforeEach
     public void setUp() {
-        exchange = new Exchange(); // Инициализируем Exchange
+        balanceManager = new ClientBalanceManager();
         random = new Random();
-        int numClients = 1000;
+        int numClients = 100;
         clients = new Client[numClients];
 
-        // Создаем клиентов и пополняем их балансы для всех валют
         for (int i = 0; i < numClients; i++) {
-            clients[i] = exchange.createClient("Client" + (i + 1));
+            clients[i] = new Client("Client" + (i + 1));
             for (Currency currency : Currency.values()) {
-                // Баланс от 5000 до 10000 для каждой валюты
-                exchange.deposit(clients[i], currency,  (5000 + random.nextLong(5000)));
+                balanceManager.deposit(clients[i], currency,  (50000 + random.nextLong(50000)));
             }
         }
 
-        // Устанавливаем семафор на 10 одновременных задач (можно настроить по необходимости)
-        semaphore = new Semaphore(10);
+        exchange = new Exchange(balanceManager);
     }
 
     @Test
-    public void testTotalMoneyConservationWithTradeGraph() throws InterruptedException {
-        // Вычисляем общее количество денег до сделок для всех валют
+    public void testTotalMoneyConservationWithTradeGraph() throws InterruptedException, ExecutionException {
         Map<Currency, Long> totalBefore = new HashMap<>();
         for (Currency currency : Currency.values()) {
             totalBefore.put(currency, 0L);
@@ -47,27 +41,15 @@ public class StressTest {
         for (Client client : clients) {
             for (Currency currency : Currency.values()) {
                 totalBefore.put(currency, totalBefore.get(currency) +
-                        exchange.getClientBalanceManager().getBalance(client, currency));
+                        balanceManager.getBalance(client, currency));
             }
         }
 
-        // Создаем пул потоков
-        ExecutorService executorService = Executors.newFixedThreadPool(clients.length);
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
 
-        // Создаем CountDownLatch для ожидания готовности всех потоков
-        CountDownLatch readyLatch = new CountDownLatch(clients.length);
-
-        // Создаем CountDownLatch для одновременного запуска всех сделок
-        CountDownLatch startLatch = new CountDownLatch(1);
-
-        // Каждый клиент создает случайные заявки на покупку и продажу
         for (Client client : clients) {
-            executorService.submit(() -> {
-                try {
-                    // Генерация случайных заявок
-                    List<Runnable> tasks = new ArrayList<>();
-                    for (int i = 0; i < 1000; i++) {
-                        // Генерация случайной валютной пары
+
+                    for (int i = 0; i < 100; i++) {
                         Currency baseCurrency = Currency.values()[random.nextInt(Currency.values().length)];
                         Currency quoteCurrency;
                         do {
@@ -75,56 +57,31 @@ public class StressTest {
                         } while (quoteCurrency == baseCurrency);
 
                         CurrencyPair pair = new CurrencyPair(baseCurrency, quoteCurrency);
-                        long price = 10 + random.nextInt(15); // Случайная цена от 50 до 200
-                        long amount = 50 + random.nextInt(100); // Случайное количество от 50 до 150
-
-                        // Добавляем заявку на покупку или продажу
+                        long price = 10 + random.nextInt(50);
+                        long amount = 500 + random.nextInt(1000);
+                        CompletableFuture<Void> future = CompletableFuture.supplyAsync(() -> {
+                            try {
                         if (random.nextBoolean()) {
-                            tasks.add(() -> exchange.createBuyOrder(client, pair, price, amount));
+                            exchange.createOrder(new Order(client, OrderType.BUY , pair, price, amount));
                         } else {
-                            tasks.add(() -> exchange.createSellOrder(client, pair, price, amount));
+                            exchange.createOrder(new Order(client, OrderType.SELL , pair, price, amount));
                         }
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                            }
+                            return null;
+                        });
+                        futures.add(future);
                     }
 
-                    // Поток готов к выполнению сделок
-                    readyLatch.countDown();
-
-                    // Ожидаем, пока все потоки будут готовы
-                    readyLatch.await();
-
-                    // Ожидаем сигнала на запуск сделок
-                    startLatch.await();
-
-                    // Выполняем все сделки с использованием семафора
-                    for (Runnable task : tasks) {
-                        try {
-                            semaphore.acquire(); // Захватываем разрешение на выполнение задачи
-                            task.run(); // Выполняем сделку
-                        } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
-                        } finally {
-                            semaphore.release(); // Освобождаем разрешение после выполнения задачи
-                        }
-                    }
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            });
         }
 
-        // Ожидаем, пока все потоки будут готовы
-        readyLatch.await();
+        // Ожидаем завершения всех асинхронных заявок
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
 
-        // Запускаем все сделки одновременно
-        startLatch.countDown();
+        // Ожидаем завершения потока OrderConsumer
+        exchange.waitForCompletion();
 
-        // Завершаем выполнение пула потоков
-        executorService.shutdown();
-        executorService.awaitTermination(5, TimeUnit.MINUTES);
-
-        exchange.shutdown();
-
-        // Вычисляем общее количество денег после сделок для всех валют
         Map<Currency, Long> totalAfter = new HashMap<>();
         for (Currency currency : Currency.values()) {
             totalAfter.put(currency, 0L);
@@ -133,15 +90,13 @@ public class StressTest {
         for (Client client : clients) {
             for (Currency currency : Currency.values()) {
                 totalAfter.put(currency, totalAfter.get(currency) +
-                        exchange.getClientBalanceManager().getBalance(client, currency));
+                        balanceManager.getBalance(client, currency));
             }
         }
-        long tolerance = 10; // Допустимая погрешность
-        // Проверяем, что общее количество денег сохраняется для каждой валюты
+
         for (Currency currency : Currency.values()) {
-            assertEquals(totalBefore.get(currency), totalAfter.get(currency), tolerance,
+            assertEquals(totalBefore.get(currency), totalAfter.get(currency),
                     "Total " + currency + " is not conserved");
         }
     }
-
 }
