@@ -108,4 +108,8 @@ public class OrderConsumer extends Thread {
         running = false;
         this.interrupt();
     }
+
+    public void waitForCompletion() throws InterruptedException {
+        this.join();  // Ожидаем завершения потока
+    }
 }

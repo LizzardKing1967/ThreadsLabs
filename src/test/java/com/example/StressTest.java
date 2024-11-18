@@ -2,7 +2,6 @@ package com.example;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -10,9 +9,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class StressTest {
     private Exchange exchange;
+
+    private OrderConsumer orderConsumer;
     private Random random;
     private Client[] clients;
     private ClientBalanceManager balanceManager;
+
+    private final BlockingQueue<Order> buyQueue = new LinkedBlockingQueue<>();
+    private final BlockingQueue<Order> sellQueue = new LinkedBlockingQueue<>();
 
     @BeforeEach
     public void setUp() {
@@ -21,6 +25,11 @@ public class StressTest {
         int numClients = 100;
         clients = new Client[numClients];
 
+        ClientBalanceManager balanceManager = new ClientBalanceManager();
+        ClientBalanceObserver observer = new ClientBalanceObserver();
+
+        balanceManager.addObserver(observer);
+
         for (int i = 0; i < numClients; i++) {
             clients[i] = new Client("Client" + (i + 1));
             for (Currency currency : Currency.values()) {
@@ -28,7 +37,9 @@ public class StressTest {
             }
         }
 
-        exchange = new Exchange(balanceManager);
+        exchange = new Exchange(balanceManager, buyQueue, sellQueue);
+        orderConsumer = new OrderConsumer(buyQueue, sellQueue, balanceManager);
+        orderConsumer.start();
     }
 
     @Test
@@ -79,8 +90,10 @@ public class StressTest {
         // Ожидаем завершения всех асинхронных заявок
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
 
-        // Ожидаем завершения потока OrderConsumer
-        exchange.waitForCompletion();
+        if (orderConsumer != null){
+            orderConsumer.waitForCompletion();
+        }
+
 
         Map<Currency, Long> totalAfter = new HashMap<>();
         for (Currency currency : Currency.values()) {

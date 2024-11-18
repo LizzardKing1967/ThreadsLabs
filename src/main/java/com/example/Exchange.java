@@ -5,14 +5,16 @@ import java.util.concurrent.LinkedBlockingQueue;
 
 public class Exchange implements ExchangeInterface {
     private final ClientBalanceManager balanceManager;
-    private final BlockingQueue<Order> buyQueue = new LinkedBlockingQueue<>();
-    private final BlockingQueue<Order> sellQueue = new LinkedBlockingQueue<>();
-    private final OrderConsumer orderConsumer;
+    private  BlockingQueue<Order> buyQueue;
+    private  BlockingQueue<Order> sellQueue;
+    //private final OrderConsumer orderConsumer;
 
-    public Exchange(ClientBalanceManager balanceManager) {
+    public Exchange(ClientBalanceManager balanceManager, BlockingQueue<Order> buyQueue, BlockingQueue<Order> sellQueue  ) {
         this.balanceManager = balanceManager;
-        this.orderConsumer = new OrderConsumer(buyQueue, sellQueue, balanceManager);
-        this.orderConsumer.start();
+        this.buyQueue = buyQueue;
+        this.sellQueue = sellQueue;
+        //this.orderConsumer = new OrderConsumer(buyQueue, sellQueue, balanceManager);
+        //this.orderConsumer.start();
     }
     @Override
     public void createOrder(Order order) {
@@ -35,13 +37,13 @@ public class Exchange implements ExchangeInterface {
         }
     }
 
-    public void stopExchange() {
-        orderConsumer.stopProcessing();
-    }
+//    public void stopExchange() {
+//        orderConsumer.stopProcessing();
+//    }
 
-    public void waitForCompletion() throws InterruptedException {
-        orderConsumer.join();  // Ожидаем завершения потока
-    }
+//    public void waitForCompletion() throws InterruptedException {
+//        orderConsumer.join();  // Ожидаем завершения потока
+//    }
 
     public BlockingQueue<Order> getBuyQueue() {
         return this.buyQueue; // Поле должно возвращаться напрямую

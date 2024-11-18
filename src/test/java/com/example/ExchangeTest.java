@@ -4,6 +4,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -11,6 +12,11 @@ import static org.junit.jupiter.api.Assertions.*;
 public class ExchangeTest {
     private Exchange exchange;
     private ClientBalanceManager balanceManager;
+
+    private final BlockingQueue<Order> buyQueue = new LinkedBlockingQueue<>();
+    private final BlockingQueue<Order> sellQueue = new LinkedBlockingQueue<>();
+
+    private OrderConsumer orderConsumer;
     private Client client1;
     private Client client2;
 
@@ -24,7 +30,9 @@ public class ExchangeTest {
 
         balanceManager.deposit(client1, Currency.USD, 10000);
         balanceManager.deposit(client2, Currency.EUR, 5000);
-        exchange = new Exchange(balanceManager);
+        exchange = new Exchange(balanceManager, buyQueue, sellQueue);
+        orderConsumer = new OrderConsumer(buyQueue, sellQueue, balanceManager);
+        orderConsumer.start();
     }
 
     @Test
@@ -59,7 +67,7 @@ public class ExchangeTest {
 
         // Ждем завершения обработки
 
-        exchange.waitForCompletion();
+        orderConsumer.waitForCompletion();
 
         // Проверяем, что ордера были обработаны
         assertEquals(0, exchange.getBuyQueue().size());
