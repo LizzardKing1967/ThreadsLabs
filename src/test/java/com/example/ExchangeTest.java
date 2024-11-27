@@ -37,7 +37,7 @@ public class ExchangeTest {
 
     @Test
     public void testCreateBuyOrderWithSufficientFunds() throws InterruptedException {
-        Order buyOrder = new Order(client1, OrderType.BUY, new CurrencyPair(Currency.EUR, Currency.USD), 2, 100);
+        Order buyOrder = new Order(client1, OrderType.BUY, new CurrencyPair(Currency.EUR, Currency.USD), 2, 100, OrderStatus.PROCESSING);
 
         exchange.createOrder(buyOrder);
 
@@ -49,7 +49,7 @@ public class ExchangeTest {
 
     @Test
     public void testCreateSellOrderWithInsufficientFunds() {
-        Order sellOrder = new Order(client1, OrderType.SELL, new CurrencyPair(Currency.EUR, Currency.USD), 1, 600);
+        Order sellOrder = new Order(client1, OrderType.SELL, new CurrencyPair(Currency.EUR, Currency.USD), 1, 600, OrderStatus.PROCESSING);
 
         exchange.createOrder(sellOrder);
 
@@ -59,8 +59,8 @@ public class ExchangeTest {
 
     @Test
     public void testConcurrentOrderProcessing() throws InterruptedException {
-        Order buyOrder = new Order(client1, OrderType.BUY, new CurrencyPair(Currency.EUR, Currency.USD), 2, 100);
-        Order sellOrder = new Order(client2, OrderType.SELL, new CurrencyPair(Currency.EUR, Currency.USD), 2, 100);
+        Order buyOrder = new Order(client1, OrderType.BUY, new CurrencyPair(Currency.EUR, Currency.USD), 2, 100 , OrderStatus.PROCESSING);
+        Order sellOrder = new Order(client2, OrderType.SELL, new CurrencyPair(Currency.EUR, Currency.USD), 2, 100, OrderStatus.PROCESSING);
 
         exchange.createOrder(buyOrder);
         exchange.createOrder(sellOrder);

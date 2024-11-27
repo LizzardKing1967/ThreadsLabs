@@ -7,12 +7,15 @@ public class Order {
     private volatile long price;
     private long amount;
 
-    public Order(Client client, OrderType type, CurrencyPair currencyPair, long price, long amount) {
+    private OrderStatus status;
+
+    public Order(Client client, OrderType type, CurrencyPair currencyPair, long price, long amount, OrderStatus status) {
         this.client = client;
         this.type = type;
         this.currencyPair = currencyPair;
         this.price = price;
         this.amount = amount;
+        this.status = status;
     }
 
     public Client getClient() {
@@ -22,6 +25,8 @@ public class Order {
     public OrderType getType() {
         return type;
     }
+
+    public OrderStatus getStatus() {return status;}
 
     public CurrencyPair getCurrencyPair() {
         return currencyPair;
@@ -41,5 +46,9 @@ public class Order {
 
     public void setAmount(long l) {
         this.amount = l;
+    }
+
+    public void setOrderStatus(OrderStatus status) {
+        this.status = status;
     }
 }

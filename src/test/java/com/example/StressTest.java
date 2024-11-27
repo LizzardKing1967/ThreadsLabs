@@ -56,7 +56,7 @@ public class StressTest {
             }
         }
 
-        List<CompletableFuture<Void>> futures = new ArrayList<>();
+        List<CompletableFuture<Order>> futures = new ArrayList<>();
 
         for (Client client : clients) {
 
@@ -69,14 +69,19 @@ public class StressTest {
 
                         CurrencyPair pair = new CurrencyPair(baseCurrency, quoteCurrency);
                         long price = 10 + random.nextInt(50);
-                        long amount = 500 + random.nextInt(1000);
-                        CompletableFuture<Void> future = CompletableFuture.supplyAsync(() -> {
+                        long amount = 500 + random.nextInt(100);
+                        CompletableFuture<Order> future = CompletableFuture.supplyAsync(() -> {
                             try {
+                                Order order;
                         if (random.nextBoolean()) {
-                            exchange.createOrder(new Order(client, OrderType.BUY , pair, price, amount));
+                            order = new Order(client, OrderType.BUY , pair, price, amount, OrderStatus.PROCESSING);
+                            exchange.createOrder(order);
                         } else {
-                            exchange.createOrder(new Order(client, OrderType.SELL , pair, price, amount));
+                            order = new Order(client, OrderType.SELL , pair, price, amount, OrderStatus.PROCESSING);
+                            exchange.createOrder(order);
                         }
+                        return order;
+
                             } catch (Exception e) {
                                 e.printStackTrace();
                             }
@@ -89,6 +94,15 @@ public class StressTest {
 
         // Ожидаем завершения всех асинхронных заявок
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+
+        for (CompletableFuture<Order> future : futures) {
+            try {
+                Order result = future.get();
+                System.out.println(result.getStatus());
+            } catch (Exception e) {
+                System.err.println("Исключение при выполнении задачи: " + e.getMessage());
+            }
+        }
 
         if (orderConsumer != null){
             orderConsumer.waitForCompletion();

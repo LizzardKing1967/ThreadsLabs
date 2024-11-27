@@ -75,13 +75,22 @@ public class OrderConsumer extends Thread {
 
             // Если ордер частично выполнен, возвращаем остаток в очередь
             if (buyOrder.getAmount() > 0) {
+                buyOrder.setOrderStatus(OrderStatus.PARTIALCOMPLETED);
                 buyQueue.add(buyOrder);
             }
-            else buyQueue.remove(buyOrder);
+            else {
+                buyOrder.setOrderStatus(OrderStatus.COMPLETED);
+                buyQueue.remove(buyOrder);
+            }
+
             if (sellOrder.getAmount() > 0) {
+                sellOrder.setOrderStatus(OrderStatus.PARTIALCOMPLETED);
                 sellQueue.add(sellOrder);
             }
-            else sellQueue.remove(sellOrder);
+            else {
+                sellOrder.setOrderStatus(OrderStatus.COMPLETED);
+                sellQueue.remove(sellOrder);
+            }
 
         } else {
             // Если недостаточно средств, возвращаем заявки обратно в очереди
