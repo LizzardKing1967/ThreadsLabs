@@ -1,8 +1,10 @@
 package com.example;
 
 import com.lmax.disruptor.BlockingWaitStrategy;
+import com.lmax.disruptor.BusySpinWaitStrategy;
 import com.lmax.disruptor.dsl.Disruptor;
 import com.lmax.disruptor.dsl.ProducerType;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -19,31 +21,27 @@ public class StressTest {
     private ClientBalanceManager balanceManager;
 
     ExecutorService executor = Executors.newCachedThreadPool();
-    ThreadFactory threadFactory;
 
-    Disruptor<OrderEvent> sellDisruptor;
-    Disruptor<OrderEvent> buyDisruptor;
+    Disruptor<OrderEvent> orderDisruptor;  // Первый Disruptor для записи ордеров
+    Disruptor<OrderEvent> processingDisruptor; // Второй Disruptor для обработки ордеров
+
+    Disruptor<OrderStatusEvent> statusDisruptor;
     int numClients;
-
 
     @BeforeEach
     public void setUp() {
         int bufferSize = 1024; // Размер кольцевого буфера
-        threadFactory = new ThreadFactory() {
+        ThreadFactory threadFactory = new ThreadFactory() {
             @Override
             public Thread newThread(Runnable r) {
-                return new Thread(r);
+                Thread thread = new Thread(r);
+                thread.setPriority(Thread.MAX_PRIORITY); // Можно использовать MIN_PRIORITY или MAX_PRIORITY
+                return thread;
             }
         };
-
-        // Создаём Disruptor для BUY ордеров
-        buyDisruptor = new Disruptor<>(OrderEvent.EVENT_FACTORY, bufferSize, threadFactory, ProducerType.MULTI, new BlockingWaitStrategy());
-
-        // Создаём Disruptor для SELL ордеров
-        sellDisruptor = new Disruptor<>(OrderEvent.EVENT_FACTORY, bufferSize, threadFactory, ProducerType.MULTI, new BlockingWaitStrategy());
-
+        // Создаем два Disruptor'а для записи и обработки ордеров
         random = new Random();
-        numClients = 100;
+        numClients = 1000;
         clients = new Client[numClients];
 
         // Менеджер балансов и наблюдатель
@@ -57,24 +55,36 @@ public class StressTest {
         for (int i = 0; i < numClients; i++) {
             clients[i] = new Client("Client" + (i + 1));  // Создаем нового клиента
             for (Currency currency : Currency.values()) {  // Для каждой валюты
-                long depositAmount = 50000 + random.nextLong(50000);  // Случайная сумма от 50000 до 100000
+                long depositAmount = 500 + random.nextLong(50000);  // Случайная сумма от 50000 до 100000
                 balanceManager.deposit(clients[i], currency, depositAmount);  // Депозит
             }
         }
 
-        // Настроим обработчик для SELL ордеров с синхронизацией с BUY ордерами
-        SynchronizedOrderProcessor processor = new SynchronizedOrderProcessor(
-                buyDisruptor.getRingBuffer(), sellDisruptor.getRingBuffer(), balanceManager);
+        orderDisruptor = new Disruptor<>(OrderEvent.EVENT_FACTORY, bufferSize, threadFactory, ProducerType.MULTI, new BusySpinWaitStrategy());
+        processingDisruptor = new Disruptor<>(OrderEvent.EVENT_FACTORY, bufferSize, threadFactory, ProducerType.SINGLE, new BlockingWaitStrategy());
+        statusDisruptor = new Disruptor<>(OrderStatusEvent::new, bufferSize, threadFactory, ProducerType.SINGLE, new BlockingWaitStrategy());
 
-        buyDisruptor.handleEventsWith(processor);
-        sellDisruptor.handleEventsWith(processor);
 
-        // Запускаем Disruptor
-        buyDisruptor.start();
-        sellDisruptor.start();
+        // Создаем обработчик передачи данных
+        WriteToProcessHandler writeHandler = new WriteToProcessHandler(processingDisruptor.getRingBuffer());
 
-        // Создаём биржу
-        exchange = new Exchange(balanceManager, buyDisruptor.getRingBuffer(), sellDisruptor.getRingBuffer());
+        // Привязываем обработчик записи к orderDisruptor
+        orderDisruptor.handleEventsWith(writeHandler);
+
+        // Привязываем обработчик обработки к processingDisruptor
+        OrderBufferProcessor processor = new OrderBufferProcessor(
+                processingDisruptor.getRingBuffer(),statusDisruptor.getRingBuffer(), balanceManager);
+        processingDisruptor.handleEventsWith(processor);
+
+        OrderStatusProcessor statusProcessor = new OrderStatusProcessor(new EmailOrderStatusNotifier());
+        statusDisruptor.handleEventsWith(statusProcessor);
+
+
+        // Запускаем оба Disruptor
+        orderDisruptor.start();
+        processingDisruptor.start();
+        statusDisruptor.start();
+        exchange = new Exchange(orderDisruptor.getRingBuffer());
     }
 
     @Test
@@ -96,7 +106,7 @@ public class StressTest {
         for (int i = 0; i < numClients; i++) {
             Client client = clients[i];
 
-            // Для каждого клиента создаём 100 асинхронных ордеров
+            // Для каждого клиента создаём 500 асинхронных ордеров
             for (int j = 0; j < 1000; j++) {
                 CompletableFuture<Order> future = CompletableFuture.supplyAsync(() -> {
                     Currency baseCurrency = Currency.values()[random.nextInt(Currency.values().length)];
@@ -106,8 +116,8 @@ public class StressTest {
                     } while (quoteCurrency == baseCurrency);
 
                     CurrencyPair pair = new CurrencyPair(baseCurrency, quoteCurrency);
-                    long price = 10 + random.nextInt(50);
-                    long amount = 500 + random.nextInt(100);
+                    long price = 50 + random.nextInt(500);
+                    long amount = random.nextInt(1000);
                     OrderType type = random.nextBoolean() ? OrderType.BUY : OrderType.SELL;
                     Order order = new Order(client, type, pair, price, amount, OrderStatus.PROCESSING);
 
@@ -120,22 +130,14 @@ public class StressTest {
             }
         }
 
-        // Ожидаем завершения всех задач
-        for (CompletableFuture<Order> future : futures) {
-            try {
-                Order order = future.join();  // Ожидаем завершения задачи
-            } catch (Exception e) {
-                // Обрабатываем ошибки
-            }
-        }
+        CompletableFuture<Void> allOf = CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
+        allOf.join();  // Это блокирует выполнение до завершения всех задач
 
-        // Останавливаем Disruptor при завершении
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            buyDisruptor.shutdown();
-            sellDisruptor.shutdown();
+            orderDisruptor.shutdown();
+            processingDisruptor.shutdown();
             executor.shutdown();
         }));
-
 
         Map<Currency, Long> totalAfter = new HashMap<>();
         for (Currency currency : Currency.values()) {
@@ -149,9 +151,11 @@ public class StressTest {
             }
         }
 
+        // Проверяем сохранение баланса для каждой валюты
         for (Currency currency : Currency.values()) {
             assertEquals(totalBefore.get(currency), totalAfter.get(currency),
                     "Total " + currency + " is not conserved");
         }
     }
+
 }

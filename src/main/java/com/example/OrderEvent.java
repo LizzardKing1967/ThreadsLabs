@@ -13,5 +13,9 @@ public class OrderEvent {
         this.order = order;
     }
 
+    public void copyFrom(OrderEvent source) {
+        this.order = source.order;
+    }
+
     public static final EventFactory<OrderEvent> EVENT_FACTORY = OrderEvent::new;
 }
