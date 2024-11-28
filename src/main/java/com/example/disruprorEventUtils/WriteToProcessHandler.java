@@ -1,5 +1,6 @@
-package com.example;
+package com.example.disruprorEventUtils;
 
+import com.example.disruprorEventUtils.OrderEvent;
 import com.lmax.disruptor.EventHandler;
 import com.lmax.disruptor.RingBuffer;
 

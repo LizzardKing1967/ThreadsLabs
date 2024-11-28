@@ -1,4 +1,7 @@
-package com.example;
+package com.example.transactions;
+
+import com.example.entyties.ClientBalanceManager;
+import com.example.entyties.Order;
 
 public class Transaction {
     private final ClientBalanceManager balanceManager;

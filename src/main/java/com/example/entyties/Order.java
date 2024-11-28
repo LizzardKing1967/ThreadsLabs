@@ -1,4 +1,4 @@
-package com.example;
+package com.example.entyties;
 
 public class Order {
     private final Client client;

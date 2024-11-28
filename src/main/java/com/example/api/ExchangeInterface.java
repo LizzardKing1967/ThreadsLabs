@@ -1,7 +1,6 @@
-package com.example;
+package com.example.api;
 
-import java.math.BigDecimal;
-import java.util.List;
+import com.example.entyties.Order;
 
 public interface ExchangeInterface {
      void createOrder(Order order);

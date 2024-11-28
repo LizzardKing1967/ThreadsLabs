@@ -1,4 +1,7 @@
-package com.example;
+package com.example.observers;
+
+import com.example.entyties.Currency;
+import com.example.entyties.Client;
 
 public class ClientBalanceObserver implements BalanceObserver {
     @Override

@@ -1,4 +1,6 @@
-package com.example;
+package com.example.disruprorEventUtils;
+
+import com.example.entyties.Order;
 
 public class OrderStatusEvent {
     private Order order; // Ордер, для которого обновляется статус

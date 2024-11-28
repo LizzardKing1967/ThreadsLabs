@@ -1,4 +1,7 @@
-package com.example;
+package com.example.entyties;
+
+import com.example.observers.BalanceObservable;
+import com.example.observers.BalanceObserver;
 
 import java.util.ArrayList;
 import java.util.List;

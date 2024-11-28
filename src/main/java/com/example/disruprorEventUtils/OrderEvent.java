@@ -1,5 +1,6 @@
-package com.example;
+package com.example.disruprorEventUtils;
 
+import com.example.entyties.Order;
 import com.lmax.disruptor.EventFactory;
 
 public class OrderEvent {

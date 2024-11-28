@@ -1,4 +1,6 @@
-package com.example;
+package com.example.statusNotifiers;
+
+import com.example.entyties.Order;
 
 public class EmailOrderStatusNotifier implements OrderStatusNotifier {
     @Override

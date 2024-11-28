@@ -1,10 +1,19 @@
 package com.example;
 
+import com.example.api.Exchange;
+import com.example.disruprorEventUtils.OrderEvent;
+import com.example.disruprorEventUtils.OrderStatusEvent;
+import com.example.disruprorEventUtils.WriteToProcessHandler;
+import com.example.entyties.*;
+import com.example.entyties.Currency;
+import com.example.observers.ClientBalanceObserver;
+import com.example.orderProcessors.OrderBufferProcessor;
+import com.example.orderProcessors.OrderStatusProcessor;
+import com.example.statusNotifiers.EmailOrderStatusNotifier;
 import com.lmax.disruptor.BlockingWaitStrategy;
 import com.lmax.disruptor.BusySpinWaitStrategy;
 import com.lmax.disruptor.dsl.Disruptor;
 import com.lmax.disruptor.dsl.ProducerType;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -54,7 +63,7 @@ public class StressTest {
         // Инициализация клиентов и их депозитов
         for (int i = 0; i < numClients; i++) {
             clients[i] = new Client("Client" + (i + 1));  // Создаем нового клиента
-            for (Currency currency : Currency.values()) {  // Для каждой валюты
+            for (com.example.entyties.Currency currency : com.example.entyties.Currency.values()) {  // Для каждой валюты
                 long depositAmount = 500 + random.nextLong(50000);  // Случайная сумма от 50000 до 100000
                 balanceManager.deposit(clients[i], currency, depositAmount);  // Депозит
             }
@@ -89,13 +98,13 @@ public class StressTest {
 
     @Test
     public void testTotalMoneyConservationWithTradeGraph() throws InterruptedException, ExecutionException {
-        Map<Currency, Long> totalBefore = new HashMap<>();
-        for (Currency currency : Currency.values()) {
+        Map<com.example.entyties.Currency, Long> totalBefore = new HashMap<>();
+        for (com.example.entyties.Currency currency : com.example.entyties.Currency.values()) {
             totalBefore.put(currency, 0L);
         }
 
         for (Client client : clients) {
-            for (Currency currency : Currency.values()) {
+            for (com.example.entyties.Currency currency : com.example.entyties.Currency.values()) {
                 totalBefore.put(currency, totalBefore.get(currency) +
                         balanceManager.getBalance(client, currency));
             }
@@ -109,10 +118,10 @@ public class StressTest {
             // Для каждого клиента создаём 500 асинхронных ордеров
             for (int j = 0; j < 1000; j++) {
                 CompletableFuture<Order> future = CompletableFuture.supplyAsync(() -> {
-                    Currency baseCurrency = Currency.values()[random.nextInt(Currency.values().length)];
-                    Currency quoteCurrency;
+                    com.example.entyties.Currency baseCurrency = com.example.entyties.Currency.values()[random.nextInt(com.example.entyties.Currency.values().length)];
+                    com.example.entyties.Currency quoteCurrency;
                     do {
-                        quoteCurrency = Currency.values()[random.nextInt(Currency.values().length)];
+                        quoteCurrency = com.example.entyties.Currency.values()[random.nextInt(com.example.entyties.Currency.values().length)];
                     } while (quoteCurrency == baseCurrency);
 
                     CurrencyPair pair = new CurrencyPair(baseCurrency, quoteCurrency);
@@ -139,20 +148,20 @@ public class StressTest {
             executor.shutdown();
         }));
 
-        Map<Currency, Long> totalAfter = new HashMap<>();
-        for (Currency currency : Currency.values()) {
+        Map<com.example.entyties.Currency, Long> totalAfter = new HashMap<>();
+        for (com.example.entyties.Currency currency : com.example.entyties.Currency.values()) {
             totalAfter.put(currency, 0L);
         }
 
         for (Client client : clients) {
-            for (Currency currency : Currency.values()) {
+            for (com.example.entyties.Currency currency : com.example.entyties.Currency.values()) {
                 totalAfter.put(currency, totalAfter.get(currency) +
                         balanceManager.getBalance(client, currency));
             }
         }
 
         // Проверяем сохранение баланса для каждой валюты
-        for (Currency currency : Currency.values()) {
+        for (com.example.entyties.Currency currency : Currency.values()) {
             assertEquals(totalBefore.get(currency), totalAfter.get(currency),
                     "Total " + currency + " is not conserved");
         }
