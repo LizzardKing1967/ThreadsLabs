@@ -24,7 +24,7 @@ public class Transaction {
     /**
      * Общая логика изменения балансов.
      */
-    private void performTransaction(Order buyOrder, Order sellOrder, long tradeAmount, long tradeValue) {
+    private synchronized void performTransaction(Order buyOrder, Order sellOrder, long tradeAmount, long tradeValue) {
         balanceManager.withdraw(sellOrder.getClient(), sellOrder.getCurrencyPair().getBase(), tradeAmount);  // Уменьшение EUR
         balanceManager.deposit(sellOrder.getClient(), sellOrder.getCurrencyPair().getQuote(), tradeValue);
         balanceManager.withdraw(buyOrder.getClient(), buyOrder.getCurrencyPair().getQuote(), tradeValue);  // Снимаем средства с покупателя (цитируемая валюта)
